@@ -5,7 +5,7 @@ import { CombatScene } from '../scenes/index.js';
 import WantedPoster from '../components/WantedPoster.jsx';
 import api from '../services/api.js';
 
-// ── Styles ─────────────────────────────────────────────────────────────
+// ── Styles ───────────────────────────────────────────────────────────────────
 const S = {
   page: {
     width: '100vw', height: '100vh',
@@ -22,31 +22,30 @@ const S = {
     zIndex: 20,
     display: 'flex', alignItems: 'center', gap: '1rem',
   },
-  flavorName: { color: '#00f5d4', fontWeight: '700', fontSize: '0.9rem', letterSpacing: '0.15em' },
-  flavorLore: { color: '#445566', fontSize: '0.75rem', flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' },
-  canvas: { width: '100%', flex: 1, position: 'absolute', top: 0, left: 0, bottom: '130px' },
+  flavorName:  { color: '#00f5d4', fontWeight: '700', fontSize: '0.9rem', letterSpacing: '0.15em' },
+  flavorLore:  { color: '#445566', fontSize: '0.75rem', flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' },
+  canvas:      { width: '100%', flex: 1, position: 'absolute', top: 0, left: 0, bottom: '130px' },
   actionBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     height: '130px',
     background: '#0a0a0fee',
     borderTop: '1px solid #00f5d411',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    gap: '1.5rem',
-    padding: '0 2rem',
+    gap: '1.5rem', padding: '0 2rem',
     zIndex: 20,
   },
   actionBtn: (disabled, color = '#00f5d4') => ({
-    background: 'transparent',
-    border: `1px solid ${disabled ? '#223344' : color + '88'}`,
-    color: disabled ? '#223344' : color,
-    padding: '0.7rem 1.8rem',
-    fontFamily: "'Courier New', Courier, monospace",
-    fontWeight: '700', fontSize: '0.9rem',
+    background:  'transparent',
+    border:      `1px solid ${disabled ? '#223344' : color + '88'}`,
+    color:       disabled ? '#223344' : color,
+    padding:     '0.7rem 1.8rem',
+    fontFamily:  "'Courier New', Courier, monospace",
+    fontWeight:  '700', fontSize: '0.9rem',
     letterSpacing: '0.1em',
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    minWidth: '160px',
-    transition: 'box-shadow 0.2s',
-    boxShadow: disabled ? 'none' : `0 0 12px ${color}33`,
+    cursor:      disabled ? 'not-allowed' : 'pointer',
+    minWidth:    '160px',
+    transition:  'box-shadow 0.2s',
+    boxShadow:   disabled ? 'none' : `0 0 12px ${color}33`,
   }),
   btnSub: { display: 'block', fontSize: '0.65rem', fontWeight: '400', color: '#334455', marginTop: '4px', letterSpacing: '0.05em' },
   overlay: {
@@ -54,8 +53,7 @@ const S = {
     background: '#0a0a0fdd',
     display: 'flex', flexDirection: 'column',
     alignItems: 'center', justifyContent: 'center',
-    zIndex: 50,
-    gap: '1.5rem',
+    zIndex: 50, gap: '1.5rem',
   },
   overlayTitle: (win) => ({
     fontSize: '3rem', fontWeight: '900',
@@ -85,21 +83,21 @@ const S = {
   },
 };
 
-// ── Component ─────────────────────────────────────────────────────────────
+// ── Component ─────────────────────────────────────────────────────────────────
 export default function CombatPage() {
   const { islandId } = useParams();
   const navigate     = useNavigate();
   const gameRef      = useRef(null);
   const phaserRef    = useRef(null);
 
-  const [island,      setIsland]      = useState(null);
-  const [combatState, setCombatState] = useState(null);
-  const [loading,     setLoading]     = useState(true);
+  const [island,        setIsland]        = useState(null);
+  const [combatState,   setCombatState]   = useState(null);
+  const [loading,       setLoading]       = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
-  const [error,       setError]       = useState('');
-  const [playerBounty, setPlayerBounty] = useState(Number(localStorage.getItem('bounty') || 0));
+  const [error,         setError]         = useState('');
+  const [playerBounty,  setPlayerBounty]  = useState(Number(localStorage.getItem('bounty') || 0));
 
-  // ── Init Phaser + start encounter ───────────────────────────────────────────
+  // ── Init Phaser + start encounter ────────────────────────────────────────
   useEffect(() => {
     const game = new Phaser.Game({
       type: Phaser.AUTO,
@@ -116,7 +114,6 @@ export default function CombatPage() {
     const onResize = () => game.scale.resize(window.innerWidth, window.innerHeight - 130);
     window.addEventListener('resize', onResize);
 
-    // Start encounter
     (async () => {
       try {
         const [islandRes, sailRes] = await Promise.all([
@@ -126,7 +123,8 @@ export default function CombatPage() {
         setIsland(islandRes.data);
         const state = sailRes.data;
         setCombatState(state);
-        game.events.emit('updateCombat', state);
+        // No lastApproach on initial load — scene just sets HP bars
+        game.events.emit('updateCombat', { ...state, lastApproach: null });
         game.events.emit('addLog', `You sail toward ${islandRes.data.name}. Combat begins!`);
       } catch (e) {
         setError(e.response?.data || 'Failed to start encounter.');
@@ -141,17 +139,21 @@ export default function CombatPage() {
     };
   }, [islandId]);
 
-  // ── Action handler ─────────────────────────────────────────────────────
+  // ── Action handler ────────────────────────────────────────────────────────
   const takeTurn = useCallback(async (approach) => {
     if (actionLoading || !combatState || combatState.status !== 'ONGOING') return;
     setActionLoading(true);
     const game = phaserRef.current;
     try {
-      const res = await api.post('/api/encounter/turn', { approach });
+      const res   = await api.post('/api/encounter/turn', { approach });
       const state = res.data;
       setCombatState(state);
-      game?.events.emit('updateCombat', state);
 
+      // ✔ Inject lastApproach into the state payload so CombatScene
+      //   knows which visual FX to fire (cannonball / rings / float text).
+      game?.events.emit('updateCombat', { ...state, lastApproach: approach });
+
+      // Plain string log — CombatScene._pushLog() handles this separately.
       const logMsgs = {
         ATTACK:     `Round ${state.round - 1}: You ATTACK — swords clash in the dark.`,
         INTIMIDATE: `Round ${state.round - 1}: You INTIMIDATE — the enemy wavers.`,
@@ -161,17 +163,16 @@ export default function CombatPage() {
       };
       game?.events.emit('addLog', logMsgs[approach] || approach);
 
-      // On WIN — save wanted poster data
       if (state.status === 'PLAYER_WON') {
         const newBounty = playerBounty + (state.bountyChange ?? 0);
         setPlayerBounty(newBounty);
         localStorage.setItem('bounty', newBounty);
         localStorage.setItem('wantedPoster', JSON.stringify({
-          handle:          localStorage.getItem('handle'),
-          bounty:          newBounty,
-          tier:            localStorage.getItem('tier') || 'Drifter',
+          handle:           localStorage.getItem('handle'),
+          bounty:           newBounty,
+          tier:             localStorage.getItem('tier') || 'Drifter',
           islandsConquered: Number(localStorage.getItem('islandsConquered') || 0) + 1,
-          seasonRank:      null,
+          seasonRank:       null,
         }));
         localStorage.setItem('islandsConquered',
           Number(localStorage.getItem('islandsConquered') || 0) + 1);
@@ -183,11 +184,11 @@ export default function CombatPage() {
     }
   }, [actionLoading, combatState, playerBounty]);
 
-  // ── Derived state ─────────────────────────────────────────────────────────
-  const isOngoing   = combatState?.status === 'ONGOING';
-  const isWon       = combatState?.status === 'PLAYER_WON';
-  const isLost      = combatState?.status === 'PLAYER_LOST';
-  const btnDisabled = !isOngoing || actionLoading || loading;
+  // ── Derived state ───────────────────────────────────────────────────────────
+  const isOngoing     = combatState?.status === 'ONGOING';
+  const isWon         = combatState?.status === 'PLAYER_WON';
+  const isLost        = combatState?.status === 'PLAYER_LOST';
+  const btnDisabled   = !isOngoing || actionLoading || loading;
   const intimidateReq = 1000;
   const intimidateOk  = playerBounty >= intimidateReq;
   const wantedData    = JSON.parse(localStorage.getItem('wantedPoster') || 'null');
@@ -199,14 +200,14 @@ export default function CombatPage() {
         <span style={S.flavorName}>{island?.name || 'UNKNOWN ISLAND'}</span>
         <span style={S.flavorLore}>{island?.lore || ''}</span>
         <span style={{ color: '#334455', fontSize: '0.75rem' }}>
-          DIFF {'★'.repeat(island?.difficulty || 1)}
+          DIFF {'\u2605'.repeat(island?.difficulty || 1)}
         </span>
       </div>
 
       {/* Phaser canvas */}
       <div ref={gameRef} style={S.canvas} />
 
-      {/* Loading/action indicator */}
+      {/* Loading / action indicator */}
       {actionLoading && <span style={S.loadingText}>PROCESSING...</span>}
 
       {/* Action buttons */}
