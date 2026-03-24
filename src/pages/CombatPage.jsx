@@ -35,17 +35,17 @@ const S = {
     zIndex: 20,
   },
   actionBtn: (disabled, color = '#00f5d4') => ({
-    background:  'transparent',
-    border:      `1px solid ${disabled ? '#223344' : color + '88'}`,
-    color:       disabled ? '#223344' : color,
-    padding:     '0.7rem 1.8rem',
-    fontFamily:  "'Courier New', Courier, monospace",
-    fontWeight:  '700', fontSize: '0.9rem',
+    background:    'transparent',
+    border:        `1px solid ${disabled ? '#223344' : color + '88'}`,
+    color:         disabled ? '#223344' : color,
+    padding:       '0.7rem 1.8rem',
+    fontFamily:    "'Courier New', Courier, monospace",
+    fontWeight:    '700', fontSize: '0.9rem',
     letterSpacing: '0.1em',
-    cursor:      disabled ? 'not-allowed' : 'pointer',
-    minWidth:    '160px',
-    transition:  'box-shadow 0.2s',
-    boxShadow:   disabled ? 'none' : `0 0 12px ${color}33`,
+    cursor:        disabled ? 'not-allowed' : 'pointer',
+    minWidth:      '160px',
+    transition:    'box-shadow 0.2s',
+    boxShadow:     disabled ? 'none' : `0 0 12px ${color}33`,
   }),
   btnSub: { display: 'block', fontSize: '0.65rem', fontWeight: '400', color: '#334455', marginTop: '4px', letterSpacing: '0.05em' },
   overlay: {
@@ -58,27 +58,27 @@ const S = {
   overlayTitle: (win) => ({
     fontSize: '3rem', fontWeight: '900',
     letterSpacing: '0.3em',
-    color: win ? '#ffd700' : '#ff4466',
+    color:       win ? '#ffd700' : '#ff4466',
     textShadow: `0 0 40px ${win ? '#ffd70088' : '#ff446688'}`,
   }),
   overlayBtn: (color = '#00f5d4') => ({
     background: 'transparent',
-    border: `1px solid ${color}`,
-    color, padding: '0.7rem 2rem',
+    border:     `1px solid ${color}`,
+    color,      padding: '0.7rem 2rem',
     fontFamily: "'Courier New', Courier, monospace",
     fontWeight: '700', fontSize: '0.9rem',
     letterSpacing: '0.1em', cursor: 'pointer',
-    boxShadow: `0 0 20px ${color}44`,
+    boxShadow:  `0 0 20px ${color}44`,
   }),
   deltaText: (win) => ({
     fontSize: '1.2rem',
-    color: win ? '#ffd700' : '#ff4466',
+    color:    win ? '#ffd700' : '#ff4466',
     letterSpacing: '0.1em',
   }),
   loadingText: {
-    position: 'absolute', bottom: '145px', left: '50%',
+    position:  'absolute', bottom: '145px', left: '50%',
     transform: 'translateX(-50%)',
-    color: '#00f5d488', fontSize: '0.8rem',
+    color:     '#00f5d488', fontSize: '0.8rem',
     letterSpacing: '0.2em', zIndex: 25,
   },
 };
@@ -90,14 +90,17 @@ export default function CombatPage() {
   const gameRef      = useRef(null);
   const phaserRef    = useRef(null);
 
+  // FIX 1: ref-based lock — immune to React async batching / stale closures
+  const actionLockRef = useRef(false);
+
   const [island,        setIsland]        = useState(null);
   const [combatState,   setCombatState]   = useState(null);
   const [loading,       setLoading]       = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false); // UI only
   const [error,         setError]         = useState('');
   const [playerBounty,  setPlayerBounty]  = useState(Number(localStorage.getItem('bounty') || 0));
 
-  // ── Init Phaser + start encounter ────────────────────────────────────────
+  // ── Init Phaser + start encounter ───────────────────────────────────────
   useEffect(() => {
     const game = new Phaser.Game({
       type: Phaser.AUTO,
@@ -123,7 +126,7 @@ export default function CombatPage() {
         setIsland(islandRes.data);
         const state = sailRes.data;
         setCombatState(state);
-        // No lastApproach on initial load — scene just sets HP bars
+        // lastApproach: null — scene skips all FX, just draws bars
         game.events.emit('updateCombat', { ...state, lastApproach: null });
         game.events.emit('addLog', `You sail toward ${islandRes.data.name}. Combat begins!`);
       } catch (e) {
@@ -139,21 +142,25 @@ export default function CombatPage() {
     };
   }, [islandId]);
 
-  // ── Action handler ────────────────────────────────────────────────────────
+  // ── Action handler (FIX 1: ref lock, no stale-closure double-fire) ───────
   const takeTurn = useCallback(async (approach) => {
-    if (actionLoading || !combatState || combatState.status !== 'ONGOING') return;
+    // Instant synchronous check — ref reads never stale
+    if (actionLockRef.current) return;
+    if (!combatState || combatState.status !== 'ONGOING') return;
+
+    actionLockRef.current = true;   // lock immediately, before any await
     setActionLoading(true);
+
     const game = phaserRef.current;
     try {
       const res   = await api.post('/api/encounter/turn', { approach });
       const state = res.data;
       setCombatState(state);
 
-      // ✔ Inject lastApproach into the state payload so CombatScene
-      //   knows which visual FX to fire (cannonball / rings / float text).
+      // Emit with approach so scene knows which FX to fire
       game?.events.emit('updateCombat', { ...state, lastApproach: approach });
 
-      // Plain string log — CombatScene._pushLog() handles this separately.
+      // Plain string log for the combat log panel
       const logMsgs = {
         ATTACK:     `Round ${state.round - 1}: You ATTACK — swords clash in the dark.`,
         INTIMIDATE: `Round ${state.round - 1}: You INTIMIDATE — the enemy wavers.`,
@@ -167,24 +174,25 @@ export default function CombatPage() {
         const newBounty = playerBounty + (state.bountyChange ?? 0);
         setPlayerBounty(newBounty);
         localStorage.setItem('bounty', newBounty);
+        localStorage.setItem('islandsConquered',
+          Number(localStorage.getItem('islandsConquered') || 0) + 1);
         localStorage.setItem('wantedPoster', JSON.stringify({
           handle:           localStorage.getItem('handle'),
           bounty:           newBounty,
           tier:             localStorage.getItem('tier') || 'Drifter',
-          islandsConquered: Number(localStorage.getItem('islandsConquered') || 0) + 1,
+          islandsConquered: Number(localStorage.getItem('islandsConquered') || 0),
           seasonRank:       null,
         }));
-        localStorage.setItem('islandsConquered',
-          Number(localStorage.getItem('islandsConquered') || 0) + 1);
       }
     } catch (e) {
       game?.events.emit('addLog', 'Server error — try again.');
     } finally {
+      actionLockRef.current = false; // always release
       setActionLoading(false);
     }
-  }, [actionLoading, combatState, playerBounty]);
+  }, [combatState, playerBounty]); // actionLoading removed from deps — ref handles it
 
-  // ── Derived state ───────────────────────────────────────────────────────────
+  // ── Derived state ─────────────────────────────────────────────────────────
   const isOngoing     = combatState?.status === 'ONGOING';
   const isWon         = combatState?.status === 'PLAYER_WON';
   const isLost        = combatState?.status === 'PLAYER_LOST';
