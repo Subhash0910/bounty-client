@@ -3,105 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Phaser from 'phaser';
 import { WorldMapScene } from '../scenes/index.js';
 
-const S = {
-  page: {
-    width: '100vw',
-    height: '100vh',
-    background: '#0a0a0f',
-    overflow: 'hidden',
-    position: 'relative',
-    fontFamily: "'Courier New', Courier, monospace",
-  },
-  logoutBtn: {
-    position: 'absolute',
-    top: '16px',
-    right: '20px',
-    background: 'transparent',
-    border: '1px solid #ff446644',
-    color: '#ff4466',
-    padding: '0.4rem 1.1rem',
-    fontFamily: "'Courier New', Courier, monospace",
-    cursor: 'pointer',
-    fontSize: '0.8rem',
-    letterSpacing: '0.1em',
-    zIndex: 100,
-  },
-  overlay: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingRight: '3rem',
-    pointerEvents: 'none',
-    zIndex: 50,
-  },
-  panel: {
-    background: '#0f0f1aee',
-    border: '1px solid #00f5d433',
-    padding: '2rem',
-    width: '300px',
-    pointerEvents: 'all',
-    boxShadow: '0 0 40px #00f5d411',
-  },
-  panelTitle: {
-    color: '#00f5d4',
-    fontSize: '1.2rem',
-    fontWeight: '700',
-    letterSpacing: '0.2em',
-    marginBottom: '0.5rem',
-  },
-  panelType: {
-    fontSize: '0.75rem',
-    letterSpacing: '0.15em',
-    marginBottom: '1rem',
-    paddingBottom: '0.8rem',
-    borderBottom: '1px solid #00f5d422',
-  },
-  panelRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    marginBottom: '0.5rem',
-    fontSize: '0.85rem',
-  },
-  panelLabel: { color: '#8899aa' },
-  panelValue: { color: '#e0e0e0' },
-  lore: {
-    color: '#556677',
-    fontSize: '0.78rem',
-    fontStyle: 'italic',
-    lineHeight: '1.5',
-    margin: '1rem 0',
-    borderLeft: '2px solid #00f5d422',
-    paddingLeft: '0.75rem',
-  },
-  sailBtn: {
-    width: '100%',
-    background: '#00f5d4',
-    color: '#0a0a0f',
-    border: 'none',
-    padding: '0.8rem',
-    fontFamily: "'Courier New', Courier, monospace",
-    fontWeight: '700',
-    fontSize: '1rem',
-    letterSpacing: '0.15em',
-    cursor: 'pointer',
-    marginTop: '0.5rem',
-    boxShadow: '0 0 20px #00f5d455',
-  },
-  closeBtn: {
-    width: '100%',
-    background: 'transparent',
-    border: '1px solid #00f5d422',
-    color: '#445566',
-    padding: '0.5rem',
-    fontFamily: "'Courier New', Courier, monospace",
-    fontSize: '0.8rem',
-    cursor: 'pointer',
-    marginTop: '0.5rem',
-    letterSpacing: '0.1em',
-  },
-};
+const MONO = "'Courier New', Courier, monospace";
 
 const TYPE_COLORS = {
   DRIFTER:  '#4a9eff',
@@ -110,44 +12,47 @@ const TYPE_COLORS = {
   VOID:     '#9b59b6',
 };
 
-function difficultyStars(d) {
-  return '★'.repeat(d) + '☆'.repeat(5 - d);
+function DifficultyStars({ difficulty, color }) {
+  return (
+    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+      {[1,2,3,4,5].map(i => (
+        <span key={i} style={{
+          fontSize: '15px',
+          color: i <= difficulty ? color : '#0d1f2d',
+          filter: i <= difficulty ? `drop-shadow(0 0 5px ${color}99)` : 'none',
+          transition: 'all 0.15s',
+        }}>★</span>
+      ))}
+    </div>
+  );
 }
 
 export default function WorldMapPage() {
-  const navigate   = useNavigate();
-  const gameRef    = useRef(null);
-  const phaserRef  = useRef(null);
+  const navigate  = useNavigate();
+  const gameRef   = useRef(null);
+  const phaserRef = useRef(null);
   const [selected, setSelected] = useState(null);
+  const [hovSail,  setHovSail]  = useState(false);
+
+  const handle = localStorage.getItem('handle') || 'Drifter';
+  const bounty = Number(localStorage.getItem('bounty') || 0);
 
   useEffect(() => {
-    // Init Phaser
-    const config = {
+    const game = new Phaser.Game({
       type: Phaser.AUTO,
-      width:  window.innerWidth,
+      width: window.innerWidth,
       height: window.innerHeight,
       transparent: true,
       parent: gameRef.current,
       backgroundColor: '#0a0a0f',
       scene: [WorldMapScene],
-      scale: {
-        mode: Phaser.Scale.RESIZE,
-        autoCenter: Phaser.Scale.CENTER_BOTH,
-      },
-    };
-
-    const game = new Phaser.Game(config);
-    phaserRef.current = game;
-
-    // Listen for island click events from scene
-    game.events.on('islandSelected', (island) => {
-      setSelected(island);
+      scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
+      banner: false,
     });
-
-    // Resize handler
+    phaserRef.current = game;
+    game.events.on('islandSelected', island => setSelected(island));
     const onResize = () => game.scale.resize(window.innerWidth, window.innerHeight);
     window.addEventListener('resize', onResize);
-
     return () => {
       window.removeEventListener('resize', onResize);
       game.events.off('islandSelected');
@@ -162,59 +67,186 @@ export default function WorldMapPage() {
     navigate('/');
   };
 
-  const handleSail = () => {
-    if (selected) navigate(`/combat/${selected.id}`);
-  };
+  const typeColor = selected ? (TYPE_COLORS[selected.type] || '#00f5d4') : '#00f5d4';
 
   return (
-    <div style={S.page}>
-      {/* Phaser canvas mount point */}
-      <div ref={gameRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />
+    <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', position: 'relative', fontFamily: MONO, background: '#0a0a0f' }}>
 
-      {/* Logout button */}
-      <button style={S.logoutBtn} onClick={handleLogout}>LOGOUT</button>
+      {/* Phaser canvas */}
+      <div ref={gameRef} style={{ position: 'absolute', inset: 0, zIndex: 0 }} />
 
-      {/* Island detail overlay panel */}
+      {/* ══ TOP HUD BAR ══════════════════════════════════════════════════════ */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: '56px', zIndex: 40,
+        background: 'linear-gradient(180deg, rgba(1,4,8,0.97) 0%, rgba(1,4,8,0.80) 60%, transparent 100%)',
+        borderBottom: '1px solid rgba(0,245,212,0.05)',
+        display: 'flex', alignItems: 'center', padding: '0 24px', gap: '20px',
+      }}>
+        {/* Player info */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1 }}>
+          <div style={{
+            width: '34px', height: '34px', borderRadius: '50%',
+            background: 'radial-gradient(circle, #0f2828 60%, #00f5d411)',
+            border: '1px solid rgba(0,245,212,0.20)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '16px', flexShrink: 0,
+          }}>🏴</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+            <span style={{ color: '#00f5d4', fontSize: '12px', fontWeight: 700, letterSpacing: '3px' }}>
+              {handle.toUpperCase()}
+            </span>
+            <span style={{ color: '#ffd700', fontSize: '11px', letterSpacing: '1px' }}>
+              ₦ {bounty.toLocaleString()}
+            </span>
+          </div>
+        </div>
+
+        {/* Center title */}
+        <div style={{ textAlign: 'center', flexShrink: 0 }}>
+          <div style={{ color: '#0e2233', fontSize: '10px', letterSpacing: '7px' }}>SEASON 1 · WORLD MAP</div>
+        </div>
+
+        {/* Logout */}
+        <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={handleLogout}
+            style={{
+              background: 'transparent', fontFamily: MONO,
+              border: '1px solid rgba(255,68,102,0.18)', color: '#2a1520',
+              fontSize: '10px', letterSpacing: '3px', padding: '5px 14px', cursor: 'pointer',
+              transition: 'all 0.18s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor='rgba(255,68,102,0.6)'; e.currentTarget.style.color='#ff4466'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor='rgba(255,68,102,0.18)'; e.currentTarget.style.color='#2a1520'; }}
+          >LOGOUT</button>
+        </div>
+      </div>
+
+      {/* ══ ISLAND DETAIL SIDE PANEL ═════════════════════════════════════════ */}
       {selected && (
-        <div style={S.overlay}>
-          <div style={S.panel}>
-            <p style={{ ...S.panelType, color: TYPE_COLORS[selected.type] || '#00f5d4' }}>
-              {selected.type}
-            </p>
-            <h2 style={S.panelTitle}>{selected.name}</h2>
+        <div style={{
+          position: 'absolute', top: 0, right: 0, bottom: 0,
+          width: '310px', zIndex: 50,
+          background: 'linear-gradient(180deg, rgba(3,7,16,0.98) 0%, rgba(2,5,12,0.99) 100%)',
+          borderLeft: `1px solid ${typeColor}22`,
+          boxShadow: `-24px 0 80px rgba(0,0,0,0.85), inset 1px 0 0 ${typeColor}11`,
+          display: 'flex', flexDirection: 'column',
+          animation: 'slidePanel 0.22s ease',
+        }}>
 
-            <div style={S.panelRow}>
-              <span style={S.panelLabel}>DIFFICULTY</span>
-              <span style={{ ...S.panelValue, color: TYPE_COLORS[selected.type] }}>
-                {difficultyStars(selected.difficulty)}
-              </span>
-            </div>
-            <div style={S.panelRow}>
-              <span style={S.panelLabel}>BOUNTY REWARD</span>
-              <span style={{ ...S.panelValue, color: '#ffd700' }}>
-                {Number(selected.bountyReward).toLocaleString()}
-              </span>
-            </div>
-            <div style={S.panelRow}>
-              <span style={S.panelLabel}>CONTROLLED BY</span>
-              <span style={{ ...S.panelValue, color: selected.ownerHandle ? '#00f5d4' : '#445566' }}>
-                {selected.ownerHandle || 'UNCLAIMED'}
-              </span>
+          {/* Color accent top bar */}
+          <div style={{
+            height: '3px', flexShrink: 0,
+            background: `linear-gradient(90deg, ${typeColor}, ${typeColor}44, transparent)`,
+            boxShadow: `0 0 18px ${typeColor}66`,
+          }} />
+
+          {/* Content */}
+          <div style={{ padding: '24px 22px', flex: 1, display: 'flex', flexDirection: 'column', gap: '18px', overflowY: 'auto' }}>
+
+            {/* Type badge */}
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '7px',
+              fontSize: '9px', letterSpacing: '5px', color: typeColor,
+              opacity: 0.85,
+            }}>
+              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: typeColor, boxShadow: `0 0 8px ${typeColor}` }} />
+              {selected.type} TERRITORY
             </div>
 
+            {/* Island name */}
+            <h2 style={{
+              color: '#ddeeff', fontSize: '1.3rem', fontWeight: 900,
+              margin: 0, letterSpacing: '1.5px', lineHeight: 1.25,
+              textShadow: `0 0 30px ${typeColor}33`,
+            }}>{selected.name}</h2>
+
+            {/* Stars */}
+            <DifficultyStars difficulty={selected.difficulty} color={typeColor} />
+
+            {/* Stats block */}
+            <div style={{
+              background: 'rgba(0,245,212,0.025)',
+              border: '1px solid rgba(0,245,212,0.07)',
+              display: 'flex', flexDirection: 'column', gap: '0',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 14px' }}>
+                <span style={{ color: '#233545', fontSize: '11px', letterSpacing: '2px' }}>BOUNTY REWARD</span>
+                <span style={{ color: '#ffd700', fontWeight: 700, fontSize: '13px', textShadow: '0 0 10px #ffd70055' }}>
+                  ₦ {Number(selected.bountyReward).toLocaleString()}
+                </span>
+              </div>
+              <div style={{ height: '1px', background: 'rgba(0,245,212,0.05)' }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 14px' }}>
+                <span style={{ color: '#233545', fontSize: '11px', letterSpacing: '2px' }}>DIFFICULTY</span>
+                <span style={{ color: typeColor, fontWeight: 700, fontSize: '13px' }}>
+                  {selected.difficulty} / 5
+                </span>
+              </div>
+              <div style={{ height: '1px', background: 'rgba(0,245,212,0.05)' }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 14px' }}>
+                <span style={{ color: '#233545', fontSize: '11px', letterSpacing: '2px' }}>CONTROLLED BY</span>
+                <span style={{
+                  color: selected.ownerHandle ? '#00f5d4' : '#1a3545',
+                  fontWeight: 700, fontSize: '11px', letterSpacing: '1px',
+                }}>
+                  {selected.ownerHandle ? `⚑ ${selected.ownerHandle}` : 'UNCLAIMED'}
+                </span>
+              </div>
+            </div>
+
+            {/* Lore */}
             {selected.lore && (
-              <p style={S.lore}>{selected.lore}</p>
+              <p style={{
+                color: '#1e3a4e', fontSize: '11px', fontStyle: 'italic',
+                lineHeight: '1.75', margin: 0,
+                borderLeft: `2px solid ${typeColor}33`,
+                paddingLeft: '12px',
+              }}>"{selected.lore}"</p>
             )}
+          </div>
 
-            <button style={S.sailBtn} onClick={handleSail}>
-              ⚓ SET SAIL
-            </button>
-            <button style={S.closeBtn} onClick={() => setSelected(null)}>
-              DISMISS
-            </button>
+          {/* ── Action buttons ───────────────────────────────────────────────── */}
+          <div style={{ padding: '18px 22px', borderTop: '1px solid rgba(0,245,212,0.05)', flexShrink: 0 }}>
+            <button
+              onMouseEnter={() => setHovSail(true)}
+              onMouseLeave={() => setHovSail(false)}
+              onClick={() => navigate(`/combat/${selected.id}`)}
+              style={{
+                width: '100%', padding: '13px',
+                background: hovSail
+                  ? `linear-gradient(135deg, ${typeColor}30, ${typeColor}15)`
+                  : `linear-gradient(135deg, ${typeColor}18, ${typeColor}08)`,
+                border: `1px solid ${hovSail ? typeColor : typeColor + '66'}`,
+                color: typeColor, fontFamily: MONO, fontWeight: 900,
+                fontSize: '13px', letterSpacing: '4px', cursor: 'pointer',
+                boxShadow: hovSail ? `0 0 45px ${typeColor}44` : `0 0 18px ${typeColor}18`,
+                transform: hovSail ? 'translateY(-1px)' : 'none',
+                transition: 'all 0.18s', marginBottom: '10px',
+              }}
+            >⚓ SET SAIL</button>
+            <button
+              onClick={() => setSelected(null)}
+              style={{
+                width: '100%', padding: '8px', background: 'transparent',
+                border: '1px solid rgba(0,245,212,0.07)', color: '#1a3040',
+                fontFamily: MONO, fontSize: '10px', letterSpacing: '3px', cursor: 'pointer',
+                transition: 'color 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#334455'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = '#1a3040'; }}
+            >DISMISS</button>
           </div>
         </div>
       )}
+
+      <style>{`
+        @keyframes slidePanel {
+          from { transform: translateX(36px); opacity: 0; }
+          to   { transform: translateX(0);    opacity: 1; }
+        }
+        * { box-sizing: border-box; }
+      `}</style>
     </div>
   );
 }
