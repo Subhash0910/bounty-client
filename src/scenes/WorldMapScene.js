@@ -7,25 +7,10 @@ const TYPE_COLORS = {
   VOID:     0x9b59b6,
 };
 
-const RANK_TIERS = [
-  { min: 0,     label: 'CABIN BOY',    color: '#6a8a9a' },
-  { min: 500,   label: 'DECKHAND',     color: '#4a9eff' },
-  { min: 2000,  label: 'BUCCANEER',    color: '#00f5d4' },
-  { min: 5000,  label: 'CORSAIR',      color: '#ffd700' },
-  { min: 12000, label: 'WARLORD',      color: '#ff8800' },
-  { min: 25000, label: 'DREAD PIRATE', color: '#ff4466' },
-];
-
-function getRank(bounty) {
-  let rank = RANK_TIERS[0];
-  for (const t of RANK_TIERS) { if (bounty >= t.min) rank = t; }
-  return rank;
-}
-
 const SEA_EVENTS = [
   { id: 'merchant', icon: '🚢', title: 'MERCHANT VESSEL', desc: 'A fat merchant ship wallows nearby. Board her?', reward: 350, risk: 18, riskLabel: '−18 HP' },
-  { id: 'wreck',    icon: '⚓', title: 'SUNKEN WRECK',    desc: 'A wreck bleeds gold into the tide. Dive for it?', reward: 200, risk: 0,  riskLabel: 'SAFE'   },
-  { id: 'storm',    icon: '🌊', title: 'STORM SURGE',     desc: 'A rogue wave batters your hull. Brace or outrun?', reward: 0, risk: 25, riskLabel: '−25 HP OR SAFE'  },
+  { id: 'wreck',    icon: '⚓', title: 'SUNKEN WRECK',    desc: 'A wreck bleeds gold into the tide. Dive for it?', reward: 200, risk: 0,  riskLabel: 'SAFE' },
+  { id: 'storm',    icon: '🌊', title: 'STORM SURGE',     desc: 'A rogue wave batters your hull. Brace or outrun?', reward: 0, risk: 25, riskLabel: '−25 HP OR SAFE' },
   { id: 'duel',     icon: '⚔️', title: 'RIVAL CAPTAIN',   desc: 'A rival captain challenges you on the open sea.', reward: 500, risk: 30, riskLabel: '−30 HP' },
   { id: 'cache',    icon: '💰', title: 'BURIED CACHE',    desc: 'A half-buried chest winks from a sandbar.', reward: 150, risk: 0, riskLabel: 'SAFE' },
 ];
@@ -35,7 +20,6 @@ export default class WorldMapScene extends Phaser.Scene {
     super({ key: 'WorldMapScene' });
     this.islands    = [];
     this.playerData = { handle: '', bounty: 0 };
-    this._seaEventTimeout = null;
   }
 
   async create() {
@@ -72,9 +56,9 @@ export default class WorldMapScene extends Phaser.Scene {
     this._scheduleSeaEvent(W, H);
   }
 
+  // ─── Ocean background ─────────────────────────────────────────────────────
   _drawOceanBackground(W, H) {
     const g = this.add.graphics().setDepth(0);
-    // Solid crisp gradient — no transparency
     const rows = 20;
     for (let i = 0; i < rows; i++) {
       const t  = i / rows;
@@ -86,14 +70,14 @@ export default class WorldMapScene extends Phaser.Scene {
     }
   }
 
+  // ─── Star field — moon pushed further left away from leaderboard ──────────
   _drawStarField(W, H) {
     const g = this.add.graphics().setDepth(1);
     g.fillStyle(0xffffff, 1);
     for (let i = 0; i < 140; i++) {
       const sx = Phaser.Math.Between(0, W);
       const sy = Phaser.Math.Between(0, H * 0.48);
-      const sr = Math.random() < 0.12 ? 1.6 : 0.65;
-      g.fillCircle(sx, sy, sr);
+      g.fillCircle(sx, sy, Math.random() < 0.12 ? 1.6 : 0.65);
     }
     for (let i = 0; i < 14; i++) {
       const dot = this.add.circle(
@@ -108,12 +92,12 @@ export default class WorldMapScene extends Phaser.Scene {
         delay: Phaser.Math.Between(0, 2000),
       });
     }
-    // Moon
+    // Moon — moved to ~72% width so it doesn't collide with leaderboard
     const moon = this.add.graphics().setDepth(1);
     moon.fillStyle(0xdde8f0, 0.92);
-    moon.fillCircle(W * 0.88, H * 0.10, 20);
+    moon.fillCircle(W * 0.72, H * 0.09, 20);
     moon.fillStyle(0x06090f, 1);
-    moon.fillCircle(W * 0.88 + 8, H * 0.10 - 5, 16);
+    moon.fillCircle(W * 0.72 + 8, H * 0.09 - 5, 16);
   }
 
   _drawOceanTexture(W, H) {
@@ -183,9 +167,8 @@ export default class WorldMapScene extends Phaser.Scene {
     }).setOrigin(0.5, 1).setDepth(15);
   }
 
-  // ─── Leaderboard (top-right, below React HUD) ───────────────────────────
+  // ─── Leaderboard — starts at y=62 (just below 54px React top bar) ─────────
   _drawLeaderboard(W, H) {
-    // Fetch top players
     const token = localStorage.getItem('token');
     fetch(
       (import.meta.env.VITE_API_URL || 'http://localhost:8080') + '/api/leaderboard',
@@ -195,58 +178,62 @@ export default class WorldMapScene extends Phaser.Scene {
     .catch(() => [])
     .then(data => {
       const players = Array.isArray(data) ? data.slice(0, 5) : [];
-      const bx = W - 178, by = 66;
-      const bw = 162, rowH = 22;
-      const totalH = 28 + players.length * rowH + 8;
+      const bw = 168, rowH = 20;
+      const totalH = 24 + players.length * rowH + 10;
+      const bx = W - bw - 10;
+      const by = 62;   // ← sits flush below the 54px React HUD bar
 
       const bg = this.add.graphics().setDepth(14);
-      bg.fillStyle(0x020508, 0.96);
+      bg.fillStyle(0x010306, 0.97);
       bg.fillRect(bx, by, bw, totalH);
       bg.lineStyle(1, 0x00f5d422, 1);
       bg.strokeRect(bx, by, bw, totalH);
-      // Top accent
-      bg.lineStyle(2, 0x00f5d488, 1);
+      bg.lineStyle(2, 0x00f5d455, 1);
       bg.moveTo(bx, by); bg.lineTo(bx + bw, by); bg.strokePath();
 
-      this.add.text(bx + bw / 2, by + 8, 'TOP CAPTAINS', {
-        fontFamily: 'Courier New', fontSize: '8px', color: '#2a5060', letterSpacing: 3,
+      this.add.text(bx + bw / 2, by + 7, 'TOP CAPTAINS', {
+        fontFamily: 'Courier New', fontSize: '8px', color: '#2a4a5a', letterSpacing: 3,
       }).setOrigin(0.5, 0).setDepth(15);
 
       if (players.length === 0) {
-        this.add.text(bx + bw / 2, by + 28, 'NO DATA', {
+        this.add.text(bx + bw / 2, by + 26, 'BE FIRST', {
           fontFamily: 'Courier New', fontSize: '9px', color: '#1a3040',
         }).setOrigin(0.5, 0).setDepth(15);
         return;
       }
 
       const myHandle = (localStorage.getItem('handle') || '').toLowerCase();
+      const medals = ['#ffd700', '#b0b8c8', '#cd7f32', '#6a8a9a', '#6a8a9a'];
+      const nums   = ['1', '2', '3', '4', '5'];
+
       players.forEach((p, i) => {
-        const ry     = by + 26 + i * rowH;
-        const isMe   = (p.handle || '').toLowerCase() === myHandle;
-        const medals = ['🥇','🥈','🥉','④','⑤'];
-        const col    = isMe ? '#ffd700' : i === 0 ? '#ffd700' : '#6a8a9a';
+        const ry    = by + 22 + i * rowH;
+        const isMe  = (p.handle || '').toLowerCase() === myHandle;
+        const col   = isMe ? '#ffffff' : medals[i];
 
-        this.add.text(bx + 8, ry, medals[i] || `${i+1}.`, {
+        // rank number
+        this.add.text(bx + 10, ry, nums[i], {
+          fontFamily: 'Courier New', fontSize: '9px', color: medals[i], fontStyle: 'bold',
+        }).setOrigin(0, 0).setDepth(15);
+
+        // name — highlight self
+        const nameText = (p.handle || '???').toUpperCase().slice(0, 11);
+        this.add.text(bx + 26, ry, nameText, {
           fontFamily: 'Courier New', fontSize: '9px', color: col,
+          fontStyle: isMe ? 'bold' : 'normal',
         }).setOrigin(0, 0).setDepth(15);
 
-        const nameText = (p.handle || '???').toUpperCase().slice(0, 10);
-        this.add.text(bx + 28, ry, nameText, {
-          fontFamily: 'Courier New', fontSize: '9px',
-          color: isMe ? '#ffffff' : col, fontStyle: isMe ? 'bold' : 'normal',
-        }).setOrigin(0, 0).setDepth(15);
-
+        // bounty right-aligned
         this.add.text(bx + bw - 8, ry, `₦${Number(p.bounty || 0).toLocaleString()}`, {
-          fontFamily: 'Courier New', fontSize: '9px', color: '#ffd70099',
+          fontFamily: 'Courier New', fontSize: '9px', color: '#ffd70077',
         }).setOrigin(1, 0).setDepth(15);
       });
     });
   }
 
-  // ─── Sea Event popup ────────────────────────────────────────────────────
+  // ─── Sea Event ────────────────────────────────────────────────────────────
   _scheduleSeaEvent(W, H) {
-    const delay = Phaser.Math.Between(18000, 35000);
-    this._seaEventTimeout = this.time.delayedCall(delay, () => {
+    this.time.delayedCall(Phaser.Math.Between(18000, 35000), () => {
       const ev = SEA_EVENTS[Phaser.Math.Between(0, SEA_EVENTS.length - 1)];
       this._showSeaEvent(ev, W, H);
     });
@@ -255,8 +242,7 @@ export default class WorldMapScene extends Phaser.Scene {
   _showSeaEvent(ev, W, H) {
     const px = W / 2, py = H / 2;
     const bw = 320, bh = 160;
-
-    const container = this.add.container(px, py).setDepth(50);
+    const container = this.add.container(px, py + 40).setDepth(50).setAlpha(0);
 
     const bg = this.add.graphics();
     bg.fillStyle(0x010408, 0.98);
@@ -266,77 +252,64 @@ export default class WorldMapScene extends Phaser.Scene {
     bg.lineStyle(2, 0xffd700, 0.9);
     bg.moveTo(-bw/2, -bh/2); bg.lineTo(bw/2, -bh/2); bg.strokePath();
 
-    const iconT  = this.add.text(0, -bh/2 + 18, ev.icon, { fontSize: '22px' }).setOrigin(0.5, 0);
-    const titleT = this.add.text(0, -bh/2 + 44, ev.title, {
+    const iconT  = this.add.text(0, -bh/2 + 16, ev.icon, { fontSize: '22px' }).setOrigin(0.5, 0);
+    const titleT = this.add.text(0, -bh/2 + 42, ev.title, {
       fontFamily: 'Courier New', fontSize: '12px', color: '#ffd700', fontStyle: 'bold', letterSpacing: 3,
     }).setOrigin(0.5, 0);
-    const descT = this.add.text(0, -bh/2 + 64, ev.desc, {
+    const descT  = this.add.text(0, -bh/2 + 62, ev.desc, {
       fontFamily: 'Courier New', fontSize: '10px', color: '#8aaabb',
       align: 'center', wordWrap: { width: bw - 40 },
     }).setOrigin(0.5, 0);
-
-    // Accept button
-    const acceptBg = this.add.graphics();
-    acceptBg.fillStyle(0xffd700, 0.12);
-    acceptBg.fillRect(-bw/2 + 20, bh/2 - 42, 120, 28);
-    acceptBg.lineStyle(1, 0xffd700, 0.7);
-    acceptBg.strokeRect(-bw/2 + 20, bh/2 - 42, 120, 28);
-    const acceptT = this.add.text(-bw/2 + 80, bh/2 - 28, `TAKE IT  +${ev.reward}₦`, {
-      fontFamily: 'Courier New', fontSize: '9px', color: '#ffd700', letterSpacing: 2,
+    const riskT  = this.add.text(0, bh/2 - 52, `RISK: ${ev.riskLabel}`, {
+      fontFamily: 'Courier New', fontSize: '8px',
+      color: ev.risk > 0 ? '#ff4466aa' : '#00f5d4aa', letterSpacing: 2,
     }).setOrigin(0.5, 0.5);
-    const acceptZone = this.add.zone(-bw/2 + 80, bh/2 - 28, 120, 28).setInteractive({ useHandCursor: true });
-    acceptZone.on('pointerdown', () => {
+
+    const mkBtn = (bx, label, fillColor, borderColor, textColor) => {
+      const btnBg = this.add.graphics();
+      btnBg.fillStyle(fillColor, 0.14);
+      btnBg.fillRect(bx - 60, bh/2 - 42, 120, 28);
+      btnBg.lineStyle(1, borderColor, 0.7);
+      btnBg.strokeRect(bx - 60, bh/2 - 42, 120, 28);
+      const btnT  = this.add.text(bx, bh/2 - 28, label, {
+        fontFamily: 'Courier New', fontSize: '9px', color: textColor, letterSpacing: 2,
+      }).setOrigin(0.5, 0.5);
+      const zone  = this.add.zone(bx, bh/2 - 28, 120, 28).setInteractive({ useHandCursor: true });
+      return { btnBg, btnT, zone };
+    };
+
+    const accept = mkBtn(-bw/2 + 80, `TAKE IT  +${ev.reward}₦`, 0xffd700, 0xffd700, '#ffd700');
+    accept.zone.on('pointerdown', () => {
       const cur = Number(localStorage.getItem('bounty') || 0);
-      const gained = ev.reward - ev.risk;
-      localStorage.setItem('bounty', Math.max(0, cur + gained));
+      localStorage.setItem('bounty', Math.max(0, cur + ev.reward - ev.risk));
       this.cameras.main.flash(200, 255, 215, 0, false);
       container.destroy();
-      this.game.events.emit('seaEventResult', { gained, event: ev.id });
+      this.game.events.emit('seaEventResult', { gained: ev.reward - ev.risk, event: ev.id });
       this._scheduleSeaEvent(W, H);
     });
 
-    // Ignore button
-    const ignoreBg = this.add.graphics();
-    ignoreBg.fillStyle(0xff4466, 0.08);
-    ignoreBg.fillRect(bw/2 - 140, bh/2 - 42, 120, 28);
-    ignoreBg.lineStyle(1, 0xff446655, 1);
-    ignoreBg.strokeRect(bw/2 - 140, bh/2 - 42, 120, 28);
-    const ignoreT = this.add.text(bw/2 - 80, bh/2 - 28, 'SAIL PAST', {
-      fontFamily: 'Courier New', fontSize: '9px', color: '#ff446699', letterSpacing: 2,
-    }).setOrigin(0.5, 0.5);
-    const ignoreZone = this.add.zone(bw/2 - 80, bh/2 - 28, 120, 28).setInteractive({ useHandCursor: true });
-    ignoreZone.on('pointerdown', () => {
-      container.destroy();
-      this._scheduleSeaEvent(W, H);
-    });
+    const ignore = mkBtn(bw/2 - 80, 'SAIL PAST', 0xff4466, 0xff4466, '#ff446699');
+    ignore.zone.on('pointerdown', () => { container.destroy(); this._scheduleSeaEvent(W, H); });
 
-    // Risk label
-    const riskT = this.add.text(0, bh/2 - 52, `RISK: ${ev.riskLabel}`, {
-      fontFamily: 'Courier New', fontSize: '8px', color: ev.risk > 0 ? '#ff4466aa' : '#00f5d4aa', letterSpacing: 2,
-    }).setOrigin(0.5, 0.5);
+    container.add([bg, iconT, titleT, descT, riskT,
+      accept.btnBg, accept.btnT, accept.zone,
+      ignore.btnBg, ignore.btnT, ignore.zone]);
 
-    container.add([bg, iconT, titleT, descT, acceptBg, acceptT, acceptZone, ignoreBg, ignoreT, ignoreZone, riskT]);
-
-    // Slide in
-    container.setAlpha(0);
-    container.y = py + 40;
-    this.tweens.add({
-      targets: container, alpha: 1, y: py,
-      duration: 300, ease: 'Back.easeOut',
-    });
+    this.tweens.add({ targets: container, alpha: 1, y: py, duration: 300, ease: 'Back.easeOut' });
   }
 
+  // ─── Island renderer ──────────────────────────────────────────────────────
   _renderIsland(island, W, H) {
-    const pad   = 90;
-    const x     = pad + (island.positionX / 1000) * (W - pad * 2);
-    const y     = pad + (island.positionY / 1000) * (H - pad * 2);
-    const color = TYPE_COLORS[island.type] || 0x00f5d4;
-    const r     = 11 + island.difficulty * 2.5;
+    const pad      = 90;
+    const x        = pad + (island.positionX / 1000) * (W - pad * 2);
+    const y        = pad + (island.positionY / 1000) * (H - pad * 2);
+    const color    = TYPE_COLORS[island.type] || 0x00f5d4;
+    const r        = 11 + island.difficulty * 2.5;
     const myHandle = (localStorage.getItem('handle') || '').toLowerCase();
     const isOwned  = !!island.ownerId;
     const isMine   = isOwned && (island.ownerHandle || '').toLowerCase() === myHandle;
 
-    // Outer glow pulse
+    // Glow pulse
     const glow = this.add.circle(x, y, r + 14, color, 0.07).setDepth(6);
     this.tweens.add({
       targets: glow, scaleX: 1.7, scaleY: 1.7, alpha: 0,
@@ -344,8 +317,6 @@ export default class WorldMapScene extends Phaser.Scene {
       ease: 'Sine.easeOut', repeat: -1,
       delay: Phaser.Math.Between(0, 1500),
     });
-
-    // Mid glow
     const midGlow = this.add.circle(x, y, r + 6, color, 0.16).setDepth(7);
     this.tweens.add({
       targets: midGlow, alpha: { from: 0.16, to: 0.04 },
@@ -353,15 +324,12 @@ export default class WorldMapScene extends Phaser.Scene {
       delay: Phaser.Math.Between(0, 800),
     });
 
-    // Island body
+    // Body
     const body = this.add.circle(x, y, r, color, 0.92).setDepth(8).setInteractive({ useHandCursor: true });
-
-    // Inner highlight
-    const hl = this.add.graphics().setDepth(9);
+    const hl   = this.add.graphics().setDepth(9);
     hl.fillStyle(0xffffff, 0.14);
     hl.fillCircle(x - r * 0.28, y - r * 0.28, r * 0.42);
 
-    // Ring
     const ring = this.add.graphics().setDepth(9);
     ring.lineStyle(1.5, color, 0.9);
     ring.strokeCircle(x, y, r + 1);
@@ -369,49 +337,59 @@ export default class WorldMapScene extends Phaser.Scene {
       ring.lineStyle(1, color, 0.3);
       ring.strokeCircle(x, y, r + 5);
     }
-
-    // Ownership ring — gold if mine, white if someone else's
     if (isOwned) {
       const ownerRing = this.add.graphics().setDepth(9);
-      const ownerColor = isMine ? 0xffd700 : 0xffffff;
-      ownerRing.lineStyle(2, ownerColor, 0.6);
+      ownerRing.lineStyle(2, isMine ? 0xffd700 : 0xffffff, 0.55);
       ownerRing.strokeCircle(x, y, r + 3);
     }
 
-    // Island name
-    this.add.text(x, y + r + 8, island.name, {
-      fontFamily: 'Courier New', fontSize: '10px',
-      color: isMine ? '#ffd700' : '#c0d0e0', align: 'center',
+    // ── Island name — bigger, fully white/gold, no fuzz ──────────────────
+    this.add.text(x, y + r + 9, island.name, {
+      fontFamily: 'Courier New',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: isMine ? '#ffd700' : '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3,
+      align: 'center',
     }).setOrigin(0.5, 0).setDepth(10);
 
-    // Flag
+    // ── Owner tag — clean pill above island ──────────────────────────────
     if (isOwned) {
-      const flagColor = isMine ? '#ffd700' : '#ffffff';
-      const flagEmoji = isMine ? '🏴‍☠️' : '🚩';
-      this.add.text(x + r - 2, y - r - 14, flagEmoji, {
-        fontSize: '13px',
-      }).setOrigin(0, 1).setDepth(11);
-      // Owner label
-      this.add.text(x, y - r - 16, island.ownerHandle || '', {
-        fontFamily: 'Courier New', fontSize: '8px', color: flagColor,
-      }).setOrigin(0.5, 1).setDepth(11);
+      const ownerLabel = (island.ownerHandle || '').toUpperCase();
+      const tagColor   = isMine ? '#ffd700' : '#e0e8f0';
+      const tagBg      = isMine ? 0xffd700 : 0xffffff;
+      const tagY       = y - r - 8;
+
+      // Pill background
+      const pillW = ownerLabel.length * 6 + 20;
+      const pill  = this.add.graphics().setDepth(10);
+      pill.fillStyle(tagBg, 0.12);
+      pill.fillRoundedRect(x - pillW/2, tagY - 11, pillW, 14, 4);
+      pill.lineStyle(1, tagBg, 0.4);
+      pill.strokeRoundedRect(x - pillW/2, tagY - 11, pillW, 14, 4);
+
+      this.add.text(x, tagY - 4, ownerLabel, {
+        fontFamily: 'Courier New',
+        fontSize: '8px',
+        fontStyle: 'bold',
+        color: tagColor,
+        stroke: '#000000',
+        strokeThickness: 2,
+        align: 'center',
+      }).setOrigin(0.5, 0.5).setDepth(11);
     }
 
     // Hover / click
-    body.on('pointerover', () => {
-      body.setScale(1.18);
-      this._showTooltip(island, x, y - r - 8);
-    });
-    body.on('pointerout', () => {
-      body.setScale(1);
-      this._hideTooltip();
-    });
+    body.on('pointerover', () => { body.setScale(1.18); this._showTooltip(island, x, y - r - 8); });
+    body.on('pointerout',  () => { body.setScale(1);    this._hideTooltip(); });
     body.on('pointerdown', () => {
       this.cameras.main.shake(120, 0.002);
       this.game.events.emit('islandSelected', island);
     });
   }
 
+  // ─── Tooltip ─────────────────────────────────────────────────────────────
   _buildTooltip(W, H) {
     this.tooltipContainer = this.add.container(0, 0).setDepth(20).setVisible(false);
     const bg = this.add.graphics();
@@ -425,8 +403,8 @@ export default class WorldMapScene extends Phaser.Scene {
     this.tooltipL1 = this.add.text(0, -44, '', { fontFamily: 'Courier New', fontSize: '12px', color: '#00f5d4', fontStyle: 'bold', align: 'center' }).setOrigin(0.5, 0);
     this.tooltipL2 = this.add.text(0, -24, '', { fontFamily: 'Courier New', fontSize: '10px', color: '#ffd700', align: 'center' }).setOrigin(0.5, 0);
     this.tooltipL3 = this.add.text(0, -6,  '', { fontFamily: 'Courier New', fontSize: '10px', color: '#556677', align: 'center' }).setOrigin(0.5, 0);
-    this.tooltipL4 = this.add.text(0, 12,  '', { fontFamily: 'Courier New', fontSize: '10px', color: '#aabbcc', align: 'center' }).setOrigin(0.5, 0);
-    this.tooltipL5 = this.add.text(0, 30,  '', { fontFamily: 'Courier New', fontSize: '9px',  color: '#8899aa', fontStyle: 'italic', align: 'center', wordWrap: { width: 200 } }).setOrigin(0.5, 0);
+    this.tooltipL4 = this.add.text(0,  12, '', { fontFamily: 'Courier New', fontSize: '10px', color: '#aabbcc', align: 'center' }).setOrigin(0.5, 0);
+    this.tooltipL5 = this.add.text(0,  30, '', { fontFamily: 'Courier New', fontSize: '9px',  color: '#8899aa', fontStyle: 'italic', align: 'center', wordWrap: { width: 200 } }).setOrigin(0.5, 0);
     this.tooltipContainer.add([bg, this.tooltipL1, this.tooltipL2, this.tooltipL3, this.tooltipL4, this.tooltipL5]);
   }
 
@@ -439,7 +417,7 @@ export default class WorldMapScene extends Phaser.Scene {
     this.tooltipL4.setText(island.ownerHandle ? `⚑ ${island.ownerHandle}` : 'UNCLAIMED');
     this.tooltipL5.setText(island.lore || '');
     const tx = Phaser.Math.Clamp(x, 115, this.W - 115);
-    const ty = Phaser.Math.Clamp(y, 60, this.H - 130);
+    const ty = Phaser.Math.Clamp(y, 62, this.H - 130);
     this.tooltipContainer.setPosition(tx, ty).setVisible(true);
   }
 
