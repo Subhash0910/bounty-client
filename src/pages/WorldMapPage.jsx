@@ -61,33 +61,48 @@ export default function WorldMapPage() {
   const navigate  = useNavigate();
   const gameRef   = useRef(null);
   const phaserRef = useRef(null);
-  const [selected,    setSelected]    = useState(null);
-  const [hovSail,     setHovSail]     = useState(false);
-  const [seaToast,    setSeaToast]    = useState(null);
-  const [liveIslands, setLiveIslands] = useState([]);
+  const [selected,  setSelected]  = useState(null);
+  const [hovSail,   setHovSail]   = useState(false);
+  const [seaToast,  setSeaToast]  = useState(null);
 
   const handle = localStorage.getItem('handle') || 'Drifter';
   const bounty = Number(localStorage.getItem('bounty') || 0);
   const rank   = getRank(bounty);
 
   useEffect(() => {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2); // cap at 2x
+
     const game = new Phaser.Game({
-      type: Phaser.AUTO,
-      width: window.innerWidth,
+      type: Phaser.CANVAS,          // force Canvas (WebGL can also blur on some drivers)
+      width:  window.innerWidth,
       height: window.innerHeight,
-      transparent: false,           // ← BLUR FIX: was true
+      transparent: false,
       parent: gameRef.current,
-      backgroundColor: '#060a16',   // ← crisp solid background
+      backgroundColor: '#060a16',
+      // ─── HiDPI / blur fix ───────────────────────────────────
+      resolution: dpr,              // matches device pixel ratio — kills blur
+      // ──────────────────────────────────────────
       scene: [WorldMapScene],
-      scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
+      scale: {
+        mode: Phaser.Scale.RESIZE,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        resolution: dpr,
+      },
+      render: {
+        antialias: false,           // sharp pixel rendering, no AA softening
+        roundPixels: true,          // snap to whole pixels — kills sub-pixel blur
+        pixelArt: false,
+      },
       banner: false,
     });
+
     phaserRef.current = game;
     game.events.on('islandSelected', island => setSelected(island));
     game.events.on('seaEventResult', ({ gained, event: evId }) => {
       setSeaToast({ gained, evId });
       setTimeout(() => setSeaToast(null), 3200);
     });
+
     const onResize = () => game.scale.resize(window.innerWidth, window.innerHeight);
     window.addEventListener('resize', onResize);
     return () => {
@@ -99,9 +114,7 @@ export default function WorldMapPage() {
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('handle');
-    localStorage.removeItem('bounty');
+    localStorage.clear();
     navigate('/');
   };
 
@@ -110,9 +123,12 @@ export default function WorldMapPage() {
   return (
     <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', position: 'relative', fontFamily: MONO }}>
 
-      <div ref={gameRef} style={{ position: 'absolute', inset: 0, zIndex: 0 }} />
+      <div ref={gameRef} style={{
+        position: 'absolute', inset: 0, zIndex: 0,
+        imageRendering: 'crisp-edges',   /* tells browser: no interpolation on this canvas */
+      }} />
 
-      {/* ══ TOP HUD BAR ════════════════════════════════════════════════════ */}
+      {/* ══ TOP HUD ═══════════════════════════════════════════════════════ */}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0, height: '54px', zIndex: 40,
         background: 'rgba(1,4,8,0.97)',
@@ -120,7 +136,6 @@ export default function WorldMapPage() {
         display: 'flex', alignItems: 'center', padding: '0 20px', gap: '16px',
         boxShadow: '0 2px 24px rgba(0,0,0,0.9)',
       }}>
-        {/* Captain identity */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
           <div style={{
             width: '36px', height: '36px', borderRadius: '50%',
@@ -135,12 +150,8 @@ export default function WorldMapPage() {
               {handle.toUpperCase()}
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ color: rank.color, fontSize: '9px', letterSpacing: '3px', fontWeight: 700 }}>
-                {rank.label}
-              </span>
-              <span style={{ color: '#ffd700', fontSize: '10px', letterSpacing: '1px', fontWeight: 700 }}>
-                ₦ {bounty.toLocaleString()}
-              </span>
+              <span style={{ color: rank.color, fontSize: '9px', letterSpacing: '3px', fontWeight: 700 }}>{rank.label}</span>
+              <span style={{ color: '#ffd700', fontSize: '10px', letterSpacing: '1px', fontWeight: 700 }}>₦ {bounty.toLocaleString()}</span>
             </div>
           </div>
         </div>
@@ -150,16 +161,13 @@ export default function WorldMapPage() {
         </div>
 
         <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
-          <button
-            onClick={handleLogout}
-            style={{
-              background: 'transparent', fontFamily: MONO,
-              border: '1px solid rgba(255,68,102,0.35)', color: '#cc3355',
-              fontSize: '10px', letterSpacing: '3px', padding: '5px 14px', cursor: 'pointer',
-              transition: 'all 0.14s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor='#ff4466'; e.currentTarget.style.color='#ff4466'; e.currentTarget.style.boxShadow='0 0 12px #ff446633'; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor='rgba(255,68,102,0.35)'; e.currentTarget.style.color='#cc3355'; e.currentTarget.style.boxShadow='none'; }}
+          <button onClick={handleLogout} style={{
+            background: 'transparent', fontFamily: MONO,
+            border: '1px solid rgba(255,68,102,0.35)', color: '#cc3355',
+            fontSize: '10px', letterSpacing: '3px', padding: '5px 14px', cursor: 'pointer', transition: 'all 0.14s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor='#ff4466'; e.currentTarget.style.color='#ff4466'; e.currentTarget.style.boxShadow='0 0 12px #ff446633'; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor='rgba(255,68,102,0.35)'; e.currentTarget.style.color='#cc3355'; e.currentTarget.style.boxShadow='none'; }}
           >LOGOUT</button>
         </div>
       </div>
@@ -171,21 +179,18 @@ export default function WorldMapPage() {
           zIndex: 60, background: 'rgba(1,4,8,0.97)',
           border: `1px solid ${seaToast.gained >= 0 ? '#ffd70088' : '#ff446688'}`,
           color: seaToast.gained >= 0 ? '#ffd700' : '#ff4466',
-          fontFamily: MONO, fontSize: '12px', letterSpacing: '3px',
-          padding: '10px 28px',
+          fontFamily: MONO, fontSize: '12px', letterSpacing: '3px', padding: '10px 28px',
           boxShadow: `0 0 30px ${seaToast.gained >= 0 ? '#ffd70033' : '#ff446633'}`,
-          animation: 'toastIn 0.3s ease',
-          whiteSpace: 'nowrap',
+          animation: 'toastIn 0.3s ease', whiteSpace: 'nowrap',
         }}>
-          {seaToast.gained >= 0 ? `⚓ +${seaToast.gained} ₦ PLUNDERED` : `💀 AMBUSHED — ${seaToast.gained} ₦`}
+          {seaToast.gained >= 0 ? `⚓ +${seaToast.gained} ₦ PLUNDERED` : `💀 AMBUSHED — ${Math.abs(seaToast.gained)} ₦ LOST`}
         </div>
       )}
 
-      {/* ══ ISLAND DETAIL PANEL ════════════════════════════════════════════ */}
+      {/* ══ ISLAND DETAIL PANEL ═══════════════════════════════════════════ */}
       {selected && (
         <div style={{
-          position: 'absolute', top: 0, right: 0, bottom: 0,
-          width: '300px', zIndex: 50,
+          position: 'absolute', top: 0, right: 0, bottom: 0, width: '300px', zIndex: 50,
           background: 'rgba(2,5,14,0.99)',
           borderLeft: `2px solid ${typeColor}55`,
           boxShadow: `-20px 0 60px rgba(0,0,0,0.95)`,
@@ -197,23 +202,18 @@ export default function WorldMapPage() {
             background: `linear-gradient(90deg, ${typeColor}, ${typeColor}44, transparent)`,
             boxShadow: `0 0 20px ${typeColor}55`,
           }} />
-
           <div style={{ padding: '22px 20px', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '9px', letterSpacing: '4px', color: typeColor, fontWeight: 900 }}>
               <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: typeColor, boxShadow: `0 0 10px ${typeColor}` }} />
               {selected.type} TERRITORY
             </div>
-
             <h2 style={{ color: '#ffffff', fontSize: '1.3rem', fontWeight: 900, margin: 0, letterSpacing: '1.5px', lineHeight: 1.25, textShadow: `0 0 24px ${typeColor}44` }}>
               {selected.name}
             </h2>
-
             <DifficultyStars difficulty={selected.difficulty} color={typeColor} />
-
             <div style={{ fontSize: '10px', color: `${typeColor}88`, letterSpacing: '1px', fontStyle: 'italic' }}>
               {TYPE_DESC[selected.type] || ''}
             </div>
-
             <div style={{ background: 'rgba(0,0,0,0.5)', border: `1px solid ${typeColor}22`, display: 'flex', flexDirection: 'column' }}>
               <StatLine label="BOUNTY REWARD" value={`₦ ${Number(selected.bountyReward).toLocaleString()}`} color="#ffd700" />
               <div style={{ height: '1px', background: 'rgba(0,245,212,0.07)' }} />
@@ -225,14 +225,12 @@ export default function WorldMapPage() {
                 color={selected.ownerHandle ? (selected.ownerHandle.toLowerCase() === handle.toLowerCase() ? '#ffd700' : '#00f5d4') : '#4a5a6a'}
               />
             </div>
-
             {selected.lore && (
               <p style={{ color: '#8aacbc', fontSize: '11px', fontStyle: 'italic', lineHeight: '1.8', margin: 0, borderLeft: `3px solid ${typeColor}55`, paddingLeft: '12px' }}>
-                "{selected.lore}"
+                “{selected.lore}”
               </p>
             )}
           </div>
-
           <div style={{ padding: '16px 20px', borderTop: `1px solid ${typeColor}22`, flexShrink: 0 }}>
             <button
               onMouseEnter={() => setHovSail(true)}
@@ -266,7 +264,8 @@ export default function WorldMapPage() {
       <style>{`
         @keyframes slidePanel { from{transform:translateX(30px);opacity:0;} to{transform:translateX(0);opacity:1;} }
         @keyframes toastIn    { from{opacity:0;transform:translateX(-50%) translateY(12px);} to{opacity:1;transform:translateX(-50%) translateY(0);} }
-        * { box-sizing:border-box; }
+        * { box-sizing: border-box; }
+        canvas { image-rendering: crisp-edges; image-rendering: pixelated; }
         ::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-track{background:#010408;} ::-webkit-scrollbar-thumb{background:#1a3a4a;}
       `}</style>
     </div>
