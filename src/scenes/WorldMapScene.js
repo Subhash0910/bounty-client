@@ -22,6 +22,12 @@ export default class WorldMapScene extends Phaser.Scene {
     this.playerData = { handle: '', bounty: 0 };
   }
 
+  // Guard: returns true if the scene is still alive after an async gap.
+  // Call this after every await before touching this.add / this.tweens.
+  _alive() {
+    return this.sys && this.sys.isActive();
+  }
+
   async create() {
     const W = this.scale.width;
     const H = this.scale.height;
@@ -36,6 +42,13 @@ export default class WorldMapScene extends Phaser.Scene {
     this.playerData.handle = localStorage.getItem('handle') || 'Drifter';
     this.playerData.bounty = Number(localStorage.getItem('bounty') || 0);
 
+    // ── Audio: only start after a user gesture to avoid autoplay block ─────
+    this.input.once('pointerdown', () => {
+      if (this.sound && this.sound.context && this.sound.context.state === 'suspended') {
+        this.sound.context.resume();
+      }
+    });
+
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(
@@ -45,9 +58,14 @@ export default class WorldMapScene extends Phaser.Scene {
       if (!res.ok) throw new Error('map fetch failed');
       this.islands = await res.json();
     } catch (e) {
+      // Scene may have been torn down while we awaited — guard before touching this.add
+      if (!this._alive()) return;
       this._showError('Could not load world map.');
       return;
     }
+
+    // ── Critical guard: scene destroyed while fetch was in-flight ──────────
+    if (!this._alive()) return;
 
     this.islands.forEach(island => this._renderIsland(island, W, H));
     this._buildTooltip(W, H);
@@ -70,7 +88,6 @@ export default class WorldMapScene extends Phaser.Scene {
     }
   }
 
-  // ─── Star field — moon pushed further left away from leaderboard ──────────
   _drawStarField(W, H) {
     const g = this.add.graphics().setDepth(1);
     g.fillStyle(0xffffff, 1);
@@ -92,7 +109,6 @@ export default class WorldMapScene extends Phaser.Scene {
         delay: Phaser.Math.Between(0, 2000),
       });
     }
-    // Moon — moved to ~72% width so it doesn't collide with leaderboard
     const moon = this.add.graphics().setDepth(1);
     moon.fillStyle(0xdde8f0, 0.92);
     moon.fillCircle(W * 0.72, H * 0.09, 20);
@@ -120,6 +136,7 @@ export default class WorldMapScene extends Phaser.Scene {
       const wave    = this.add.graphics().setDepth(3);
       let offset    = i * 40;
       const draw = () => {
+        if (!this._alive()) return;   // stop redrawing if scene destroyed
         wave.clear();
         wave.lineStyle(1, 0x00f5d4, opacity);
         wave.beginPath();
@@ -167,7 +184,6 @@ export default class WorldMapScene extends Phaser.Scene {
     }).setOrigin(0.5, 1).setDepth(15);
   }
 
-  // ─── Leaderboard — starts at y=62 (just below 54px React top bar) ─────────
   _drawLeaderboard(W, H) {
     const token = localStorage.getItem('token');
     fetch(
@@ -177,11 +193,14 @@ export default class WorldMapScene extends Phaser.Scene {
     .then(r => r.ok ? r.json() : [])
     .catch(() => [])
     .then(data => {
+      // Guard: user may have navigated away before fetch completed
+      if (!this._alive()) return;
+
       const players = Array.isArray(data) ? data.slice(0, 5) : [];
       const bw = 168, rowH = 20;
       const totalH = 24 + players.length * rowH + 10;
       const bx = W - bw - 10;
-      const by = 62;   // ← sits flush below the 54px React HUD bar
+      const by = 62;
 
       const bg = this.add.graphics().setDepth(14);
       bg.fillStyle(0x010306, 0.97);
@@ -207,23 +226,15 @@ export default class WorldMapScene extends Phaser.Scene {
       const nums   = ['1', '2', '3', '4', '5'];
 
       players.forEach((p, i) => {
-        const ry    = by + 22 + i * rowH;
-        const isMe  = (p.handle || '').toLowerCase() === myHandle;
-        const col   = isMe ? '#ffffff' : medals[i];
-
-        // rank number
+        const ry   = by + 22 + i * rowH;
+        const isMe = (p.handle || '').toLowerCase() === myHandle;
+        const col  = isMe ? '#ffffff' : medals[i];
         this.add.text(bx + 10, ry, nums[i], {
           fontFamily: 'Courier New', fontSize: '9px', color: medals[i], fontStyle: 'bold',
         }).setOrigin(0, 0).setDepth(15);
-
-        // name — highlight self
-        const nameText = (p.handle || '???').toUpperCase().slice(0, 11);
-        this.add.text(bx + 26, ry, nameText, {
-          fontFamily: 'Courier New', fontSize: '9px', color: col,
-          fontStyle: isMe ? 'bold' : 'normal',
+        this.add.text(bx + 26, ry, (p.handle || '???').toUpperCase().slice(0, 11), {
+          fontFamily: 'Courier New', fontSize: '9px', color: col, fontStyle: isMe ? 'bold' : 'normal',
         }).setOrigin(0, 0).setDepth(15);
-
-        // bounty right-aligned
         this.add.text(bx + bw - 8, ry, `₦${Number(p.bounty || 0).toLocaleString()}`, {
           fontFamily: 'Courier New', fontSize: '9px', color: '#ffd70077',
         }).setOrigin(1, 0).setDepth(15);
@@ -231,15 +242,16 @@ export default class WorldMapScene extends Phaser.Scene {
     });
   }
 
-  // ─── Sea Event ────────────────────────────────────────────────────────────
   _scheduleSeaEvent(W, H) {
     this.time.delayedCall(Phaser.Math.Between(18000, 35000), () => {
+      if (!this._alive()) return;
       const ev = SEA_EVENTS[Phaser.Math.Between(0, SEA_EVENTS.length - 1)];
       this._showSeaEvent(ev, W, H);
     });
   }
 
   _showSeaEvent(ev, W, H) {
+    if (!this._alive()) return;
     const px = W / 2, py = H / 2;
     const bw = 320, bh = 160;
     const container = this.add.container(px, py + 40).setDepth(50).setAlpha(0);
@@ -271,10 +283,10 @@ export default class WorldMapScene extends Phaser.Scene {
       btnBg.fillRect(bx - 60, bh/2 - 42, 120, 28);
       btnBg.lineStyle(1, borderColor, 0.7);
       btnBg.strokeRect(bx - 60, bh/2 - 42, 120, 28);
-      const btnT  = this.add.text(bx, bh/2 - 28, label, {
+      const btnT = this.add.text(bx, bh/2 - 28, label, {
         fontFamily: 'Courier New', fontSize: '9px', color: textColor, letterSpacing: 2,
       }).setOrigin(0.5, 0.5);
-      const zone  = this.add.zone(bx, bh/2 - 28, 120, 28).setInteractive({ useHandCursor: true });
+      const zone = this.add.zone(bx, bh/2 - 28, 120, 28).setInteractive({ useHandCursor: true });
       return { btnBg, btnT, zone };
     };
 
@@ -300,6 +312,8 @@ export default class WorldMapScene extends Phaser.Scene {
 
   // ─── Island renderer ──────────────────────────────────────────────────────
   _renderIsland(island, W, H) {
+    if (!this._alive()) return;   // guard in case called after scene destroyed
+
     const pad      = 90;
     const x        = pad + (island.positionX / 1000) * (W - pad * 2);
     const y        = pad + (island.positionY / 1000) * (H - pad * 2);
@@ -309,7 +323,6 @@ export default class WorldMapScene extends Phaser.Scene {
     const isOwned  = !!island.ownerId;
     const isMine   = isOwned && (island.ownerHandle || '').toLowerCase() === myHandle;
 
-    // Glow pulse
     const glow = this.add.circle(x, y, r + 14, color, 0.07).setDepth(6);
     this.tweens.add({
       targets: glow, scaleX: 1.7, scaleY: 1.7, alpha: 0,
@@ -324,7 +337,6 @@ export default class WorldMapScene extends Phaser.Scene {
       delay: Phaser.Math.Between(0, 800),
     });
 
-    // Body
     const body = this.add.circle(x, y, r, color, 0.92).setDepth(8).setInteractive({ useHandCursor: true });
     const hl   = this.add.graphics().setDepth(9);
     hl.fillStyle(0xffffff, 0.14);
@@ -343,44 +355,29 @@ export default class WorldMapScene extends Phaser.Scene {
       ownerRing.strokeCircle(x, y, r + 3);
     }
 
-    // ── Island name — bigger, fully white/gold, no fuzz ──────────────────
     this.add.text(x, y + r + 9, island.name, {
-      fontFamily: 'Courier New',
-      fontSize: '11px',
-      fontStyle: 'bold',
+      fontFamily: 'Courier New', fontSize: '11px', fontStyle: 'bold',
       color: isMine ? '#ffd700' : '#ffffff',
-      stroke: '#000000',
-      strokeThickness: 3,
-      align: 'center',
+      stroke: '#000000', strokeThickness: 3, align: 'center',
     }).setOrigin(0.5, 0).setDepth(10);
 
-    // ── Owner tag — clean pill above island ──────────────────────────────
     if (isOwned) {
       const ownerLabel = (island.ownerHandle || '').toUpperCase();
       const tagColor   = isMine ? '#ffd700' : '#e0e8f0';
       const tagBg      = isMine ? 0xffd700 : 0xffffff;
       const tagY       = y - r - 8;
-
-      // Pill background
-      const pillW = ownerLabel.length * 6 + 20;
-      const pill  = this.add.graphics().setDepth(10);
+      const pillW      = ownerLabel.length * 6 + 20;
+      const pill       = this.add.graphics().setDepth(10);
       pill.fillStyle(tagBg, 0.12);
       pill.fillRoundedRect(x - pillW/2, tagY - 11, pillW, 14, 4);
       pill.lineStyle(1, tagBg, 0.4);
       pill.strokeRoundedRect(x - pillW/2, tagY - 11, pillW, 14, 4);
-
       this.add.text(x, tagY - 4, ownerLabel, {
-        fontFamily: 'Courier New',
-        fontSize: '8px',
-        fontStyle: 'bold',
-        color: tagColor,
-        stroke: '#000000',
-        strokeThickness: 2,
-        align: 'center',
+        fontFamily: 'Courier New', fontSize: '8px', fontStyle: 'bold',
+        color: tagColor, stroke: '#000000', strokeThickness: 2, align: 'center',
       }).setOrigin(0.5, 0.5).setDepth(11);
     }
 
-    // Hover / click
     body.on('pointerover', () => { body.setScale(1.18); this._showTooltip(island, x, y - r - 8); });
     body.on('pointerout',  () => { body.setScale(1);    this._hideTooltip(); });
     body.on('pointerdown', () => {
@@ -389,7 +386,6 @@ export default class WorldMapScene extends Phaser.Scene {
     });
   }
 
-  // ─── Tooltip ─────────────────────────────────────────────────────────────
   _buildTooltip(W, H) {
     this.tooltipContainer = this.add.container(0, 0).setDepth(20).setVisible(false);
     const bg = this.add.graphics();
@@ -399,7 +395,6 @@ export default class WorldMapScene extends Phaser.Scene {
     bg.strokeRect(-108, -56, 216, 112);
     bg.lineStyle(2, 0x00f5d4, 0.6);
     bg.moveTo(-108, -56); bg.lineTo(108, -56); bg.strokePath();
-
     this.tooltipL1 = this.add.text(0, -44, '', { fontFamily: 'Courier New', fontSize: '12px', color: '#00f5d4', fontStyle: 'bold', align: 'center' }).setOrigin(0.5, 0);
     this.tooltipL2 = this.add.text(0, -24, '', { fontFamily: 'Courier New', fontSize: '10px', color: '#ffd700', align: 'center' }).setOrigin(0.5, 0);
     this.tooltipL3 = this.add.text(0, -6,  '', { fontFamily: 'Courier New', fontSize: '10px', color: '#556677', align: 'center' }).setOrigin(0.5, 0);
@@ -409,6 +404,7 @@ export default class WorldMapScene extends Phaser.Scene {
   }
 
   _showTooltip(island, x, y) {
+    if (!this._alive()) return;
     const stars = '★'.repeat(island.difficulty) + '☆'.repeat(5 - island.difficulty);
     const tc    = { DRIFTER: '#4a9eff', MERCHANT: '#ffd700', WARLORD: '#ff4444', VOID: '#9b59b6' };
     this.tooltipL1.setText(island.name).setColor(tc[island.type] || '#00f5d4');
@@ -421,9 +417,12 @@ export default class WorldMapScene extends Phaser.Scene {
     this.tooltipContainer.setPosition(tx, ty).setVisible(true);
   }
 
-  _hideTooltip() { this.tooltipContainer.setVisible(false); }
+  _hideTooltip() {
+    if (this.tooltipContainer) this.tooltipContainer.setVisible(false);
+  }
 
   _showError(msg) {
+    if (!this._alive()) return;
     this.add.text(this.W / 2, this.H / 2, msg, {
       fontFamily: 'Courier New', fontSize: '14px', color: '#ff4466', align: 'center',
     }).setOrigin(0.5).setDepth(30);
