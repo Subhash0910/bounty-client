@@ -13,7 +13,13 @@
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.23.1",
     "phaser": "^3.80.1",
-    "axios": "^1.7.2"
+    "axios": "^1.7.2",
+    "three": "^0.165.0",
+    "@react-three/fiber": "^8.16.8",
+    "@react-three/drei": "^9.105.6",
+    "pixi.js": "^8.1.5",
+    "gsap": "^3.12.5",
+    "howler": "^2.2.4"
   },
   "devDependencies": {
     "vite": "^5.3.1",
